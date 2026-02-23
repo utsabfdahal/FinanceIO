@@ -13,6 +13,10 @@ struct AddExpenseView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
+    /// Dynamic categories from SwiftData.
+    @Query(sort: \ExpenseCategory.sortOrder)
+    private var categories: [ExpenseCategory]
+
     // MARK: - Form State
 
     @State private var amount: String = ""
@@ -22,20 +26,10 @@ struct AddExpenseView: View {
     @State private var paymentMethod: String = "Cash"
     @State private var showDatePicker: Bool = false
 
-    // MARK: - Options
+    /// Optional: pre-fill when editing.
+    var editingExpense: ExpenseTransaction? = nil
 
-    /// Category definitions with SF Symbol icons and colors.
-    static let categories: [(name: String, icon: String, color: Color)] = [
-        ("Food",          "fork.knife",           .orange),
-        ("Transport",     "car.fill",             .blue),
-        ("Rent",          "house.fill",           .purple),
-        ("Shopping",      "bag.fill",             .pink),
-        ("Utilities",     "bolt.fill",            .yellow),
-        ("Entertainment", "tv.fill",              .indigo),
-        ("Health",        "heart.fill",           .red),
-        ("Education",     "book.fill",            .teal),
-        ("Other",         "ellipsis.circle.fill", .gray),
-    ]
+    // MARK: - Options
 
     /// Available payment methods with icons.
     static let paymentMethods: [(name: String, icon: String)] = [
@@ -49,9 +43,13 @@ struct AddExpenseView: View {
     // MARK: - Computed
 
     private var selectedCategoryInfo: (name: String, icon: String, color: Color) {
-        Self.categories.first { $0.name == category }
-            ?? ("Other", "ellipsis.circle.fill", .gray)
+        if let cat = categories.first(where: { $0.name == category }) {
+            return (cat.name, cat.icon, cat.color)
+        }
+        return ("Other", "ellipsis.circle.fill", .gray)
     }
+
+    private var isEditing: Bool { editingExpense != nil }
 
     // MARK: - Body
 
@@ -71,7 +69,7 @@ struct AddExpenseView: View {
             #if os(iOS)
             .background(Color(.systemGroupedBackground))
             #endif
-            .navigationTitle("Add Expense")
+            .navigationTitle(isEditing ? "Edit Expense" : "Add Expense")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -84,6 +82,16 @@ struct AddExpenseView: View {
                             .foregroundStyle(.secondary)
                             .font(.title3)
                     }
+                }
+            }
+            .onAppear {
+                seedDefaultCategoriesIfNeeded()
+                if let e = editingExpense {
+                    amount = String(e.amount)
+                    category = e.category
+                    date = e.date
+                    note = e.note ?? ""
+                    paymentMethod = e.paymentMethod ?? "Cash"
                 }
             }
         }
@@ -134,7 +142,7 @@ struct AddExpenseView: View {
                 columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3),
                 spacing: 10
             ) {
-                ForEach(Self.categories, id: \.name) { cat in
+                ForEach(categories) { cat in
                     let isSelected = category == cat.name
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -301,7 +309,7 @@ struct AddExpenseView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
-                Text("Save Expense")
+                Text(isEditing ? "Update Expense" : "Save Expense")
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
@@ -326,19 +334,48 @@ struct AddExpenseView: View {
     private func saveExpense() {
         guard let value = Double(amount) else { return }
 
-        let expense = ExpenseTransaction(
-            amount: value,
-            date: date,
-            category: category,
-            note: note.isEmpty ? nil : note,
-            paymentMethod: paymentMethod
-        )
-        modelContext.insert(expense)
+        if let existing = editingExpense {
+            // Update in place
+            existing.amount = value
+            existing.date = date
+            existing.category = category
+            existing.note = note.isEmpty ? nil : note
+            existing.paymentMethod = paymentMethod
+        } else {
+            let expense = ExpenseTransaction(
+                amount: value,
+                date: date,
+                category: category,
+                note: note.isEmpty ? nil : note,
+                paymentMethod: paymentMethod
+            )
+            modelContext.insert(expense)
+        }
         dismiss()
+    }
+
+    // MARK: - Seed Defaults
+
+    /// Seeds the built-in default categories on first launch if none exist.
+    private func seedDefaultCategoriesIfNeeded() {
+        guard categories.isEmpty else { return }
+        for def in ExpenseCategory.builtInDefaults {
+            let cat = ExpenseCategory(
+                name: def.name,
+                icon: def.icon,
+                colorHex: def.hex,
+                sortOrder: def.order,
+                isDefault: true
+            )
+            modelContext.insert(cat)
+        }
     }
 }
 
 #Preview {
     AddExpenseView()
-        .modelContainer(for: ExpenseTransaction.self, inMemory: true)
+        .modelContainer(
+            for: [ExpenseTransaction.self, ExpenseCategory.self],
+            inMemory: true
+        )
 }

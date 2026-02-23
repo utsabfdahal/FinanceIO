@@ -46,6 +46,10 @@ struct ExpenseListView: View {
     @Query(sort: \ExpenseTransaction.date, order: .reverse)
     private var expenses: [ExpenseTransaction]
 
+    /// Dynamic categories for icons/colors.
+    @Query(sort: \ExpenseCategory.sortOrder)
+    private var categories: [ExpenseCategory]
+
     /// Controls presentation of the Add Expense sheet.
     @State private var showingAddExpense = false
 
@@ -61,7 +65,9 @@ struct ExpenseListView: View {
                 } else {
                     List {
                         ForEach(expenses) { expense in
-                            ExpenseRow(expense: expense)
+                            NavigationLink(destination: ExpenseDetailView(expense: expense)) {
+                                ExpenseRow(expense: expense, categories: categories)
+                            }
                         }
                         .onDelete(perform: deleteExpenses)
                     }
@@ -100,11 +106,25 @@ struct ExpenseListView: View {
 /// A single row showing category, date, amount, and payment method.
 private struct ExpenseRow: View {
     let expense: ExpenseTransaction
+    let categories: [ExpenseCategory]
+
+    private var catInfo: (icon: String, color: Color) {
+        if let cat = categories.first(where: { $0.name == expense.category }) {
+            return (cat.icon, cat.color)
+        }
+        return (iconFallback(for: expense.category), .gray)
+    }
 
     var body: some View {
-        HStack {
+        HStack(spacing: 12) {
+            Image(systemName: catInfo.icon)
+                .font(.body)
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(catInfo.color, in: RoundedRectangle(cornerRadius: 10))
+
             VStack(alignment: .leading, spacing: 4) {
-                Label(expense.category, systemImage: icon(for: expense.category))
+                Text(expense.category)
                     .font(.headline)
                 Text(expense.date, format: .dateTime.month(.abbreviated).day().year())
                     .font(.caption)
@@ -127,7 +147,7 @@ private struct ExpenseRow: View {
         .padding(.vertical, 4)
     }
 
-    private func icon(for category: String) -> String {
+    private func iconFallback(for category: String) -> String {
         switch category {
         case "Food":          return "fork.knife"
         case "Transport":     return "car.fill"
@@ -145,7 +165,7 @@ private struct ExpenseRow: View {
 #Preview {
     ContentView()
         .modelContainer(
-            for: [ExpenseTransaction.self, Person.self, LendingTransaction.self],
+            for: [ExpenseTransaction.self, Person.self, LendingTransaction.self, ExpenseCategory.self],
             inMemory: true
         )
 }

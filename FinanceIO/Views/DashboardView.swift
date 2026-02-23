@@ -24,6 +24,9 @@ struct DashboardView: View {
     @Query(sort: \LendingTransaction.date, order: .reverse)
     private var lendingTransactions: [LendingTransaction]
 
+    @Query(sort: \ExpenseCategory.sortOrder)
+    private var expenseCategories: [ExpenseCategory]
+
     // MARK: - Computed Properties
 
     /// Start of the current calendar month.
@@ -54,13 +57,14 @@ struct DashboardView: View {
 
     /// Combined recent activity: latest 5 items from expenses + lending, sorted by date.
     private var recentActivity: [ActivityItem] {
-        let expenseItems: [ActivityItem] = expenses.prefix(5).map {
-            ActivityItem(
-                title: $0.category,
-                subtitle: $0.paymentMethod,
-                amount: -$0.amount,          // expenses are outgoing
-                date: $0.date,
-                icon: "cart",
+        let expenseItems: [ActivityItem] = expenses.prefix(5).map { exp in
+            let catIcon = expenseCategories.first(where: { $0.name == exp.category })?.icon ?? "cart"
+            return ActivityItem(
+                title: exp.category,
+                subtitle: exp.paymentMethod,
+                amount: -exp.amount,          // expenses are outgoing
+                date: exp.date,
+                icon: catIcon,
                 kind: .expense
             )
         }
@@ -256,7 +260,7 @@ private struct ActivityItem: Identifiable {
 #Preview {
     DashboardView()
         .modelContainer(
-            for: [ExpenseTransaction.self, Person.self, LendingTransaction.self],
+            for: [ExpenseTransaction.self, Person.self, LendingTransaction.self, ExpenseCategory.self],
             inMemory: true
         )
 }

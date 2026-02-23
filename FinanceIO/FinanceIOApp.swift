@@ -18,6 +18,7 @@ struct FinanceIOApp: App {
             ExpenseTransaction.self,
             Person.self,
             LendingTransaction.self,
+            ExpenseCategory.self,
         ])
         let modelConfiguration = ModelConfiguration(
             schema: schema,

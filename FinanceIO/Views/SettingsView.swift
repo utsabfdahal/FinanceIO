@@ -7,6 +7,9 @@
 
 import SwiftUI
 import SwiftData
+#if os(iOS)
+import UIKit
+#endif
 
 /// App settings: data export and data management.
 struct SettingsView: View {
@@ -16,23 +19,24 @@ struct SettingsView: View {
     @Query private var people: [Person]
     @Query private var lendingTransactions: [LendingTransaction]
 
-    /// URL of the generated CSV file (set when the user taps Export).
-    @State private var exportURL: URL?
-
-    /// Controls the share sheet presentation.
-    @State private var showingShareSheet = false
-
     /// Controls the destructive "Clear All Data" confirmation.
     @State private var showingClearConfirm = false
 
     var body: some View {
         NavigationStack {
             List {
+                // --- Categories ---
+                Section("Customization") {
+                    NavigationLink(destination: CategoryManagerView()) {
+                        Label("Expense Categories", systemImage: "square.grid.2x2")
+                    }
+                }
+
                 // --- Data Management ---
                 Section("Data Management") {
                     // Export
                     Button {
-                        generateCSV()
+                        exportAndShare()
                     } label: {
                         Label("Export to CSV", systemImage: "square.and.arrow.up")
                     }
@@ -72,28 +76,45 @@ struct SettingsView: View {
             } message: {
                 Text("This action cannot be undone. All expenses and lending records will be removed.")
             }
-            .sheet(isPresented: $showingShareSheet) {
-                if let url = exportURL {
-                    ShareSheetView(url: url)
-                }
-            }
         }
     }
 
     // MARK: - Actions
 
-    /// Generates the CSV and presents the system share sheet.
-    private func generateCSV() {
-        if let url = CSVExporter.export(expenses: expenses, people: people) {
-            exportURL = url
-            showingShareSheet = true
+    /// Generates the CSV and presents the system share sheet directly.
+    private func exportAndShare() {
+        guard let url = CSVExporter.export(expenses: expenses, people: people) else { return }
+
+        #if os(iOS)
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootVC = windowScene.windows.first?.rootViewController else { return }
+
+        // Walk to the top-most presented controller
+        var topVC = rootVC
+        while let presented = topVC.presentedViewController {
+            topVC = presented
         }
+
+        let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+
+        // iPad requires a popover source
+        if let popover = activityVC.popoverPresentationController {
+            popover.sourceView = topVC.view
+            popover.sourceRect = CGRect(
+                x: topVC.view.bounds.midX,
+                y: topVC.view.bounds.midY,
+                width: 0, height: 0
+            )
+            popover.permittedArrowDirections = []
+        }
+
+        topVC.present(activityVC, animated: true)
+        #endif
     }
 
     /// Deletes every record from all three model types.
     private func clearAllData() {
         withAnimation {
-            // Delete lending transactions first (child), then people, then expenses
             for tx in lendingTransactions { modelContext.delete(tx) }
             for person in people { modelContext.delete(person) }
             for expense in expenses { modelContext.delete(expense) }
@@ -101,47 +122,12 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Share Sheet
-
-#if os(iOS)
-import UIKit
-
-/// Wraps `UIActivityViewController` so we can share the CSV file URL.
-private struct ShareSheetView: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url], applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) { }
-}
-#else
-import AppKit
-
-/// macOS: wraps NSSharingServicePicker to share the CSV file URL.
-private struct ShareSheetView: NSViewRepresentable {
-    let url: URL
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            let picker = NSSharingServicePicker(items: [url])
-            picker.show(relativeTo: .zero, of: view, preferredEdge: .minY)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) { }
-}
-#endif
-
 // MARK: - Preview
 
 #Preview {
     SettingsView()
         .modelContainer(
-            for: [ExpenseTransaction.self, Person.self, LendingTransaction.self],
+            for: [ExpenseTransaction.self, Person.self, LendingTransaction.self, ExpenseCategory.self],
             inMemory: true
         )
 }
