@@ -22,9 +22,30 @@ struct SettingsView: View {
     /// Controls the destructive "Clear All Data" confirmation.
     @State private var showingClearConfirm = false
 
+    /// Whether the daily 9 PM reminder is enabled.
+    @State private var dailyReminderEnabled = false
+
     var body: some View {
         NavigationStack {
             List {
+                // --- Notifications ---
+                Section {
+                    Toggle(isOn: $dailyReminderEnabled) {
+                        Label("Daily Reminder", systemImage: "bell.badge")
+                    }
+                    .onChange(of: dailyReminderEnabled) { _, newValue in
+                        if newValue {
+                            NotificationManager.enableDailyReminder()
+                        } else {
+                            NotificationManager.cancelDailyReminder()
+                        }
+                    }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    Text("Get a reminder every day at 9:00 PM to log your expenses.")
+                }
+
                 // --- Categories ---
                 Section("Customization") {
                     NavigationLink(destination: CategoryManagerView()) {
@@ -75,6 +96,11 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) { }
             } message: {
                 Text("This action cannot be undone. All expenses and lending records will be removed.")
+            }
+            .onAppear {
+                NotificationManager.isReminderScheduled { scheduled in
+                    dailyReminderEnabled = scheduled
+                }
             }
         }
     }
